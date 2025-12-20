@@ -18,17 +18,61 @@ export default function Home() {
   const [isTextExpanded, setIsTextExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const convertToBase64 = (file: File): Promise<{ base64: string; mimeType: string }> => {
+  const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        const [mimePart, base64String] = dataUrl.split(",");
-        const mimeType = mimePart.match(/:(.*?);/)?.[1] || "image/jpeg";
-        resolve({ base64: base64String, mimeType });
+
+      reader.onload = (e) => {
+        const img = new Image();
+
+        img.onload = () => {
+          // Створюємо canvas
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+
+          if (!ctx) {
+            reject(new Error('Не вдалося створити canvas context'));
+            return;
+          }
+
+          // Максимальні розміри
+          const MAX_WIDTH = 1024;
+          const MAX_HEIGHT = 1024;
+
+          let width = img.width;
+          let height = img.height;
+
+          // Зберігаємо пропорції при зменшенні
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height = Math.round((height * MAX_WIDTH) / width);
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width = Math.round((width * MAX_HEIGHT) / height);
+              height = MAX_HEIGHT;
+            }
+          }
+
+          // Встановлюємо розміри canvas
+          canvas.width = width;
+          canvas.height = height;
+
+          // Малюємо зменшене зображення
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Конвертуємо в base64 JPEG з якістю 80%
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+          resolve(compressedBase64);
+        };
+
+        img.onerror = () => reject(new Error('Помилка завантаження зображення'));
+        img.src = e.target?.result as string;
       };
-      reader.onerror = (error) => reject(error);
+
+      reader.onerror = () => reject(new Error('Помилка читання файлу'));
+      reader.readAsDataURL(file);
     });
   };
 
@@ -193,6 +237,7 @@ export default function Home() {
   const handleFileSelect = async (file: File) => {
     if (!file.type.startsWith("image/")) {
       setError("Будь ласка, оберіть файл зображення");
+      toast.error("Оберіть файл зображення");
       return;
     }
 
@@ -203,25 +248,26 @@ export default function Home() {
     setOriginalImage(null);
 
     try {
-      const { base64, mimeType } = await convertToBase64(file);
+      // Спочатку стискаємо зображення
+      const compressedBase64 = await compressImage(file);
 
-      // Зберігаємо оригінал
-      setOriginalImage(base64);
+      // Зберігаємо стиснуте зображення як оригінал
+      setOriginalImage(compressedBase64);
 
       // Покращуємо зображення якщо Auto-Enhance увімкнено
-      let imageToAnalyze = base64;
+      let imageToAnalyze = compressedBase64;
       if (isAutoEnhance) {
         try {
-          imageToAnalyze = await enhanceImage(base64);
+          imageToAnalyze = await enhanceImage(compressedBase64);
           setEnhancedImage(imageToAnalyze);
         } catch (enhanceError) {
           console.error('Помилка покращення зображення:', enhanceError);
-          // Якщо покращення не вдалося, використовуємо оригінал
-          imageToAnalyze = base64;
-          setEnhancedImage(base64);
+          // Якщо покращення не вдалося, використовуємо стиснуте
+          imageToAnalyze = compressedBase64;
+          setEnhancedImage(compressedBase64);
         }
       } else {
-        setEnhancedImage(base64);
+        setEnhancedImage(compressedBase64);
       }
 
       const response = await fetch("/api/analyze", {
@@ -229,7 +275,7 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ image: imageToAnalyze, mimeType }),
+        body: JSON.stringify({ image: imageToAnalyze, mimeType: "image/jpeg" }),
       });
 
       if (!response.ok) {
@@ -243,7 +289,10 @@ export default function Home() {
       const formattedText = formatInstagramPost(data.result);
       setEditableText(formattedText);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Щось пішло не так");
+      console.error('Помилка обробки фото:', err);
+      const errorMessage = err instanceof Error ? err.message : "Не вдалося обробити фото. Спробуйте інше";
+      setError(errorMessage);
+      toast.error("Не вдалося обробити фото. Спробуйте інше");
     } finally {
       setLoading(false);
     }
