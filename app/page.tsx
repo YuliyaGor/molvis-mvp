@@ -1,10 +1,11 @@
 "use client";
 
 import { Upload, Loader2, Heart, MessageCircle, Send, Bookmark, MoreHorizontal } from "lucide-react";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 export default function Home() {
   const [loading, setLoading] = useState(false);
@@ -17,6 +18,69 @@ export default function Home() {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [isTextExpanded, setIsTextExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchParams = useSearchParams();
+
+  // Перевірка чи є згенероване зображення з AI Студії
+  useEffect(() => {
+    const fromStudio = searchParams.get('from');
+    if (fromStudio === 'studio') {
+      const generatedImage = localStorage.getItem('generated_image');
+      const generatedPrompt = localStorage.getItem('generated_prompt');
+
+      if (generatedImage) {
+        // Автоматично обробляємо згенероване зображення
+        processGeneratedImage(generatedImage, generatedPrompt || '');
+
+        // Очищаємо localStorage
+        localStorage.removeItem('generated_image');
+        localStorage.removeItem('generated_prompt');
+      }
+    }
+  }, [searchParams]);
+
+  const processGeneratedImage = async (imageBase64: string, prompt: string) => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      // Зберігаємо згенероване зображення
+      setOriginalImage(imageBase64);
+      setEnhancedImage(imageBase64);
+
+      // Відправляємо на аналіз до Gemini
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          image: imageBase64,
+          mimeType: "image/png",
+          context: `Це зображення було згенеровано AI за промптом: "${prompt}"`
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Помилка при обробці зображення");
+      }
+
+      const data = await response.json();
+      setResult(data.result);
+      const formattedText = formatInstagramPost(data.result);
+      setEditableText(formattedText);
+
+      toast.success("✨ Пост створено з вашого AI зображення!");
+    } catch (err) {
+      console.error('Помилка обробки згенерованого фото:', err);
+      const errorMessage = err instanceof Error ? err.message : "Помилка обробки";
+      setError(errorMessage);
+      toast.error("Не вдалося створити пост");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -401,7 +465,13 @@ export default function Home() {
           <p className="text-xl text-gray-400 sm:text-2xl">
             Твій AI-SMM мольфар
           </p>
-          <div className="mt-6">
+          <div className="mt-6 flex flex-wrap gap-3 justify-center">
+            <Link
+              href="/studio"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl"
+            >
+              🎨 AI Студія
+            </Link>
             <Link
               href="/drafts"
               className="inline-flex items-center gap-2 bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700 hover:border-purple-500/50 text-gray-300 hover:text-white font-semibold py-3 px-6 rounded-xl transition-all"
