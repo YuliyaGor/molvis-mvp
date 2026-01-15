@@ -3,14 +3,17 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Wand2 } from "lucide-react";
+import { ArrowLeft, Loader2, Wand2, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/useAuth";
 
 export default function StudioPage() {
+  const { user, loading: authLoading, signOut } = useAuth();
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
+  const [translatedPrompt, setTranslatedPrompt] = useState<string>("");
   const router = useRouter();
 
   const handleGenerate = async () => {
@@ -21,6 +24,7 @@ export default function StudioPage() {
 
     setLoading(true);
     setGeneratedImage(null);
+    setTranslatedPrompt("");
 
     try {
       const response = await fetch("/api/generate-image", {
@@ -46,6 +50,7 @@ export default function StudioPage() {
 
       setGeneratedImage(data.image);
       setCurrentPrompt(prompt);
+      setTranslatedPrompt(data.translatedPrompt || "");
       toast.success("🎨 Зображення згенеровано!");
 
     } catch (error: any) {
@@ -94,8 +99,36 @@ export default function StudioPage() {
     "Космічна станція над Дніпром",
   ];
 
+  // Показуємо завантаження поки перевіряємо авторизацію
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-purple-500 mx-auto mb-4" />
+          <p className="text-gray-400">Завантаження...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900">
+      {/* Header з кнопкою виходу */}
+      <header className="absolute top-4 right-4 flex items-center gap-3">
+        {user && (
+          <>
+            <span className="text-sm text-gray-400">{user.email}</span>
+            <button
+              onClick={signOut}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700 rounded-lg transition-all"
+            >
+              <LogOut className="w-4 h-4" />
+              Вийти
+            </button>
+          </>
+        )}
+      </header>
+
       <div className="max-w-4xl mx-auto px-6 py-16">
         {/* Header */}
         <div className="mb-12">
@@ -129,6 +162,14 @@ export default function StudioPage() {
               className="w-full h-32 bg-gray-900/50 border border-gray-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors resize-none"
               disabled={loading}
             />
+
+            {/* Translated Prompt Display */}
+            {translatedPrompt && (
+              <div className="mt-3 p-3 bg-gray-900/50 border border-gray-600 rounded-lg">
+                <p className="text-xs text-gray-500 mb-1">Переклад AI:</p>
+                <p className="text-sm text-gray-300 italic">{translatedPrompt}</p>
+              </div>
+            )}
 
             {/* Example Prompts */}
             <div className="mt-4">
@@ -190,15 +231,15 @@ export default function StudioPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <button
                   onClick={handleCreatePost}
-                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-3 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                  className="bg-purple-600/80 hover:bg-purple-500/80 border border-purple-500/50 hover:border-purple-400/50 text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2"
                 >
                   📝 Створити пост з цим фото
                 </button>
                 <button
                   onClick={handleSaveToGallery}
-                  className="bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-800 hover:to-gray-900 text-white font-semibold py-3 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                  className="bg-gray-700/80 hover:bg-gray-600/80 border border-gray-600/50 hover:border-gray-500/50 text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2"
                 >
-                  💾 Зберегти в галерею
+                  📥 Завантажити фото
                 </button>
               </div>
             </div>

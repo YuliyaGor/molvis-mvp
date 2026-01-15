@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/useAuth";
 import { toast } from "sonner";
 import Link from "next/link";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, LogOut } from "lucide-react";
 
 interface Post {
   id: string;
@@ -15,6 +16,7 @@ interface Post {
 }
 
 export default function DraftsPage() {
+  const { user, loading: authLoading, signOut } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
@@ -74,6 +76,22 @@ export default function DraftsPage() {
     }
   };
 
+  const handleDownloadImage = (imageUrl: string, postId: string) => {
+    try {
+      const link = document.createElement('a');
+      link.href = imageUrl;
+      link.download = `molvis-draft-${postId}-${Date.now()}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success('📥 Фото завантажено!');
+    } catch (error) {
+      console.error('Помилка завантаження:', error);
+      toast.error('Не вдалося завантажити фото');
+    }
+  };
+
   const toggleExpanded = (id: string) => {
     setExpandedPosts(prev => {
       const newSet = new Set(prev);
@@ -91,12 +109,12 @@ export default function DraftsPage() {
     return text.substring(0, maxLength) + '...';
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-900 via-black to-gray-900">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-12 w-12 animate-spin text-purple-500" />
-          <p className="text-gray-400">Завантаження чернеток...</p>
+          <p className="text-gray-400">{authLoading ? "Перевірка авторизації..." : "Завантаження чернеток..."}</p>
         </div>
       </div>
     );
@@ -104,6 +122,22 @@ export default function DraftsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900">
+      {/* Header з кнопкою виходу */}
+      <header className="absolute top-4 right-4 flex items-center gap-3">
+        {user && (
+          <>
+            <span className="text-sm text-gray-400">{user.email}</span>
+            <button
+              onClick={signOut}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700 rounded-lg transition-all"
+            >
+              <LogOut className="w-4 h-4" />
+              Вийти
+            </button>
+          </>
+        )}
+      </header>
+
       <div className="max-w-7xl mx-auto px-6 py-16">
         {/* Header */}
         <div className="mb-12">
@@ -204,18 +238,27 @@ export default function DraftsPage() {
                     </p>
 
                     {/* Actions */}
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        onClick={() => handleDownloadImage(post.image_url, post.id)}
+                        className="bg-gray-700/80 hover:bg-gray-600/80 border border-gray-600/50 hover:border-gray-500/50 text-white text-sm font-medium py-2 px-3 rounded-lg transition-all"
+                        title="Завантажити фото"
+                      >
+                        📥
+                      </button>
                       <button
                         onClick={() => handleCopy(post.caption)}
-                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-all"
+                        className="bg-gray-700/80 hover:bg-gray-600/80 border border-gray-600/50 hover:border-gray-500/50 text-white text-sm font-medium py-2 px-3 rounded-lg transition-all"
+                        title="Копіювати текст"
                       >
-                        📋 Копіювати
+                        📋
                       </button>
                       <button
                         onClick={() => handleDelete(post.id)}
-                        className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-all"
+                        className="bg-red-900/40 hover:bg-red-800/60 border border-red-800/50 hover:border-red-700/50 text-red-300 hover:text-red-200 text-sm font-medium py-2 px-3 rounded-lg transition-all"
+                        title="Видалити"
                       >
-                        🗑️ Видалити
+                        🗑️
                       </button>
                     </div>
                   </div>
