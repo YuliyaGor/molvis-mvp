@@ -34,7 +34,7 @@ export default function DraftsPage() {
   const fetchPosts = async () => {
     try {
       const { data, error } = await supabase
-        .from('posts')
+        .from('posts' as any)
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -42,7 +42,7 @@ export default function DraftsPage() {
         console.error('Помилка завантаження:', error);
         toast.error(`Помилка: ${error.message}`);
       } else {
-        setPosts(data || []);
+        setPosts((data || []) as Post[]);
       }
     } catch (error: any) {
       console.error('Помилка:', error);
@@ -117,7 +117,7 @@ export default function DraftsPage() {
   const handleDelete = async (id: string) => {
     try {
       const { error } = await supabase
-        .from('posts')
+        .from('posts' as any)
         .delete()
         .eq('id', id);
 

@@ -79,12 +79,12 @@ export default function Home() {
   const fetchInstagramAccounts = async () => {
     try {
       const { data, error } = await supabase
-        .from('instagram_accounts')
+        .from('instagram_accounts' as any)
         .select('*')
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        setInstagramAccounts(data);
+        setInstagramAccounts(data as any);
       }
     } catch (error) {
       console.error('Error fetching Instagram accounts:', error);
@@ -824,14 +824,14 @@ export default function Home() {
 
       // Зберігаємо в Supabase
       const { data, error } = await supabase
-        .from('posts')
+        .from('posts' as any)
         .insert([
           {
             image_url: `data:image/jpeg;base64,${imageToSave}`,
             caption: editableText,
             hashtags: hashtagMatches
           }
-        ])
+        ] as any)
         .select();
 
       if (error) {
