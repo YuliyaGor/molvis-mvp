@@ -1,12 +1,13 @@
 "use client";
 
-import { Upload, Loader2, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, LogOut } from "lucide-react";
+import { Upload, Loader2, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, LogOut, Instagram, ChevronDown } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { InstagramAccount } from "@/lib/types";
 
 export default function Home() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -37,6 +38,9 @@ export default function Home() {
   const [loadingFrames, setLoadingFrames] = useState(false);
   const [showFrameLibrary, setShowFrameLibrary] = useState(false);
   const [frameName, setFrameName] = useState("");
+  const [instagramAccounts, setInstagramAccounts] = useState<InstagramAccount[]>([]);
+  const [publishingToInstagram, setPublishingToInstagram] = useState(false);
+  const [showInstagramSelector, setShowInstagramSelector] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const frameInputRef = useRef<HTMLInputElement>(null);
   const saveFrameInputRef = useRef<HTMLInputElement>(null);
@@ -66,6 +70,26 @@ export default function Home() {
       fetchSavedFrames();
     }
   }, [isEditorOpen]);
+
+  // Завантаження Instagram акаунтів
+  useEffect(() => {
+    fetchInstagramAccounts();
+  }, []);
+
+  const fetchInstagramAccounts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('instagram_accounts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setInstagramAccounts(data);
+      }
+    } catch (error) {
+      console.error('Error fetching Instagram accounts:', error);
+    }
+  };
 
   const fetchSavedFrames = async () => {
     setLoadingFrames(true);
@@ -823,6 +847,47 @@ export default function Home() {
     }
   };
 
+  const handlePublishToInstagram = async (accountId: string) => {
+    if (!enhancedImage || !editableText) {
+      toast.error("Немає даних для публікації");
+      return;
+    }
+
+    setPublishingToInstagram(true);
+    setShowInstagramSelector(false);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const imageToPublish = editedImage || enhancedImage;
+
+      const response = await fetch('/api/instagram/publish', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({
+          imageUrl: `data:image/jpeg;base64,${imageToPublish}`,
+          caption: editableText,
+          accountId: accountId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success('🎉 Пост опубліковано в Instagram!');
+      } else {
+        toast.error(data.error || 'Помилка публікації');
+      }
+    } catch (error) {
+      console.error('Publish error:', error);
+      toast.error('Помилка публікації в Instagram');
+    } finally {
+      setPublishingToInstagram(false);
+    }
+  };
+
   const handleToggleEnhance = async () => {
     if (!originalImage) return;
 
@@ -897,6 +962,12 @@ export default function Home() {
               className="inline-flex items-center gap-2 bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700 hover:border-purple-500/50 text-gray-300 hover:text-white font-semibold py-3 px-6 rounded-xl transition-all"
             >
               📂 Мої чернетки
+            </Link>
+            <Link
+              href="/settings"
+              className="inline-flex items-center gap-2 bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700 hover:border-purple-500/50 text-gray-300 hover:text-white font-semibold py-3 px-6 rounded-xl transition-all"
+            >
+              ⚙️ Налаштування
             </Link>
           </div>
         </div>
@@ -1445,6 +1516,81 @@ export default function Home() {
                   💾 Зберегти чернетку
                 </button>
               </div>
+
+              {/* Instagram Publish Button */}
+              {instagramAccounts.length > 0 && (
+                <div className="relative">
+                  {instagramAccounts.length === 1 ? (
+                    <button
+                      onClick={() => handlePublishToInstagram(instagramAccounts[0].id)}
+                      disabled={publishingToInstagram}
+                      className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold py-3 px-6 rounded-xl transition-all"
+                    >
+                      {publishingToInstagram ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Публікуємо...
+                        </>
+                      ) : (
+                        <>
+                          <Instagram className="w-5 h-5" />
+                          Опублікувати в Instagram
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => setShowInstagramSelector(!showInstagramSelector)}
+                        disabled={publishingToInstagram}
+                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold py-3 px-6 rounded-xl transition-all"
+                      >
+                        {publishingToInstagram ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Публікуємо...
+                          </>
+                        ) : (
+                          <>
+                            <Instagram className="w-5 h-5" />
+                            Опублікувати в Instagram
+                            <ChevronDown className="w-5 h-5" />
+                          </>
+                        )}
+                      </button>
+
+                      {/* Account selector dropdown */}
+                      {showInstagramSelector && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl z-10 overflow-hidden">
+                          <p className="px-4 py-3 text-sm text-gray-400 border-b border-gray-700">
+                            Виберіть акаунт:
+                          </p>
+                          {instagramAccounts.map((account) => (
+                            <button
+                              key={account.id}
+                              onClick={() => handlePublishToInstagram(account.id)}
+                              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-700 transition-colors text-left"
+                            >
+                              {account.avatar_url ? (
+                                <img
+                                  src={account.avatar_url}
+                                  alt={account.username}
+                                  className="w-10 h-10 rounded-full"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                                  <Instagram className="w-5 h-5 text-white" />
+                                </div>
+                              )}
+                              <span className="text-white font-medium">@{account.username}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* Success/Error Message */}
               {savedMessage && (

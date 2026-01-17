@@ -5,7 +5,8 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
 import { toast } from "sonner";
 import Link from "next/link";
-import { ArrowLeft, Loader2, LogOut } from "lucide-react";
+import { ArrowLeft, Loader2, LogOut, Instagram, ChevronDown } from "lucide-react";
+import { InstagramAccount } from "@/lib/types";
 
 interface Post {
   id: string;
@@ -20,9 +21,14 @@ export default function DraftsPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
+  const [instagramAccounts, setInstagramAccounts] = useState<InstagramAccount[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<string>("");
+  const [publishingPostId, setPublishingPostId] = useState<string | null>(null);
+  const [showAccountSelector, setShowAccountSelector] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPosts();
+    fetchInstagramAccounts();
   }, []);
 
   const fetchPosts = async () => {
@@ -46,6 +52,67 @@ export default function DraftsPage() {
     }
   };
 
+  const fetchInstagramAccounts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('instagram_accounts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching Instagram accounts:', error);
+      } else {
+        setInstagramAccounts(data || []);
+        // Якщо є тільки один акаунт, вибираємо його автоматично
+        if (data && data.length === 1) {
+          setSelectedAccount(data[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
+  const handlePublishToInstagram = async (post: Post, accountId: string) => {
+    if (!accountId) {
+      toast.error('Виберіть Instagram акаунт');
+      return;
+    }
+
+    setPublishingPostId(post.id);
+    setShowAccountSelector(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch('/api/instagram/publish', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({
+          imageUrl: post.image_url,
+          caption: post.caption + (post.hashtags?.length ? '\n\n' + post.hashtags.join(' ') : ''),
+          accountId: accountId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success('🎉 Пост опубліковано в Instagram!');
+      } else {
+        toast.error(data.error || 'Помилка публікації');
+      }
+    } catch (error) {
+      console.error('Publish error:', error);
+      toast.error('Помилка публікації в Instagram');
+    } finally {
+      setPublishingPostId(null);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     try {
       const { error } = await supabase
@@ -57,7 +124,6 @@ export default function DraftsPage() {
         console.error('Помилка видалення:', error);
         toast.error(`Помилка: ${error.message}`);
       } else {
-        // Миттєво прибираємо картку з екрану
         setPosts(posts.filter(post => post.id !== id));
         toast.success('🗑️ Чернетку видалено!');
       }
@@ -150,7 +216,7 @@ export default function DraftsPage() {
           </Link>
 
           <h1 className="text-5xl font-bold text-white mb-4">
-            📂 Мої чернетки
+            Мої чернетки
           </h1>
           <p className="text-xl text-gray-400">
             {posts.length === 0
@@ -180,6 +246,8 @@ export default function DraftsPage() {
                 ? post.caption
                 : truncateText(post.caption, 100);
               const needsTruncation = post.caption.length > 100;
+              const isPublishing = publishingPostId === post.id;
+              const showSelector = showAccountSelector === post.id;
 
               return (
                 <div
@@ -236,6 +304,81 @@ export default function DraftsPage() {
                         minute: '2-digit'
                       })}
                     </p>
+
+                    {/* Instagram Publish Button */}
+                    {instagramAccounts.length > 0 && (
+                      <div className="mb-3 relative">
+                        {instagramAccounts.length === 1 ? (
+                          <button
+                            onClick={() => handlePublishToInstagram(post, instagramAccounts[0].id)}
+                            disabled={isPublishing}
+                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-all"
+                          >
+                            {isPublishing ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Публікуємо...
+                              </>
+                            ) : (
+                              <>
+                                <Instagram className="w-4 h-4" />
+                                Опублікувати в Instagram
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setShowAccountSelector(showSelector ? null : post.id)}
+                              disabled={isPublishing}
+                              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-all"
+                            >
+                              {isPublishing ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  Публікуємо...
+                                </>
+                              ) : (
+                                <>
+                                  <Instagram className="w-4 h-4" />
+                                  Опублікувати в Instagram
+                                  <ChevronDown className="w-4 h-4" />
+                                </>
+                              )}
+                            </button>
+
+                            {/* Account selector dropdown */}
+                            {showSelector && (
+                              <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-10 overflow-hidden">
+                                <p className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700">
+                                  Виберіть акаунт:
+                                </p>
+                                {instagramAccounts.map((account) => (
+                                  <button
+                                    key={account.id}
+                                    onClick={() => handlePublishToInstagram(post, account.id)}
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-700 transition-colors text-left"
+                                  >
+                                    {account.avatar_url ? (
+                                      <img
+                                        src={account.avatar_url}
+                                        alt={account.username}
+                                        className="w-8 h-8 rounded-full"
+                                      />
+                                    ) : (
+                                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                                        <Instagram className="w-4 h-4 text-white" />
+                                      </div>
+                                    )}
+                                    <span className="text-white text-sm">@{account.username}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
 
                     {/* Actions */}
                     <div className="grid grid-cols-3 gap-2">
