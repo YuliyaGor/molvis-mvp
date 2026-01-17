@@ -74,7 +74,6 @@ export async function POST(req: Request) {
       .getPublicUrl(filePath);
 
     // Зберігаємо метадані в базі
-    // @ts-ignore
     const { data: frameData, error: dbError } = await supabase
       .from('frames')
       .insert([
@@ -82,7 +81,7 @@ export async function POST(req: Request) {
           name: name,
           url: urlData.publicUrl
         }
-      ])
+      ] as any)
       .select()
       .single();
 
@@ -120,11 +119,10 @@ export async function DELETE(req: Request) {
     }
 
     // Отримуємо інформацію про рамку
-    // @ts-ignore
     const { data: frame, error: fetchError } = await supabase
       .from('frames')
       .select('url')
-      .eq('id', id)
+      .eq('id', id as any)
       .single();
 
     if (fetchError || !frame) {
@@ -154,7 +152,7 @@ export async function DELETE(req: Request) {
     const { error: dbError } = await supabase
       .from('frames')
       .delete()
-      .eq('id', id);
+      .eq('id', id as any);
 
     if (dbError) {
       console.error('Database deletion error:', dbError);

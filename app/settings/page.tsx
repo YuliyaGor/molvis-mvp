@@ -6,8 +6,17 @@ import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, LogOut, Instagram, Trash2, Plus } from "lucide-react";
+import { ArrowLeft, Loader2, LogOut, Instagram, Trash2, Plus, X, Check } from "lucide-react";
 import { InstagramAccount } from "@/lib/types";
+
+interface FetchedAccount {
+  pageId: string;
+  pageName: string;
+  instagramId: string;
+  username: string;
+  avatarUrl: string | null;
+  name: string;
+}
 
 export default function SettingsPage() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -15,6 +24,13 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const searchParams = useSearchParams();
+
+  // State for account selection dialog
+  const [showSelectDialog, setShowSelectDialog] = useState(false);
+  const [fetchedAccounts, setFetchedAccounts] = useState<FetchedAccount[]>([]);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(new Set());
+  const [savingAccounts, setSavingAccounts] = useState(false);
+  const [tempAccessToken, setTempAccessToken] = useState<string | null>(null);
 
   // Обробка callback від Facebook OAuth
   useEffect(() => {
@@ -83,7 +99,8 @@ export default function SettingsPage() {
       // Отримуємо токен сесії для авторизації API
       const { data: { session } } = await supabase.auth.getSession();
 
-      const response = await fetch("/api/instagram/connect", {
+      // 1. Спочатку обмінюємо код на токен через connect endpoint
+      const connectResponse = await fetch("/api/instagram/connect", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -92,20 +109,119 @@ export default function SettingsPage() {
         body: JSON.stringify({ code }),
       });
 
-      const data = await response.json();
+      const connectData = await connectResponse.json();
 
-      if (response.ok) {
-        toast.success(`Акаунт @${data.account.username} успішно підключено!`);
-        fetchAccounts();
-      } else {
-        toast.error(data.error || "Помилка підключення акаунту");
+      if (!connectResponse.ok) {
+        toast.error(connectData.error || "Помилка підключення акаунту");
+        setConnecting(false);
+        return;
       }
+
+      // Зберігаємо токен для подальшого використання
+      const accessToken = connectData.accessToken;
+      setTempAccessToken(accessToken);
+
+      // 2. Отримуємо список доступних акаунтів
+      const fetchResponse = await fetch("/api/instagram/fetch-accounts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token || ""}`,
+        },
+        body: JSON.stringify({ accessToken }),
+      });
+
+      const fetchData = await fetchResponse.json();
+
+      if (!fetchResponse.ok) {
+        toast.error(fetchData.error || "Помилка отримання акаунтів");
+        setConnecting(false);
+        return;
+      }
+
+      if (fetchData.accounts.length === 0) {
+        toast.error("Не знайдено Instagram Business акаунтів. Переконайтеся, що ваш Instagram є Business/Creator і пов'язаний з Facebook сторінкою.");
+        setConnecting(false);
+        return;
+      }
+
+      // 3. Показуємо діалог вибору акаунтів
+      setFetchedAccounts(fetchData.accounts);
+      setSelectedAccountIds(new Set(fetchData.accounts.map((a: FetchedAccount) => a.instagramId)));
+      setShowSelectDialog(true);
+      setConnecting(false);
+
     } catch (error) {
       console.error("Connect error:", error);
       toast.error("Помилка підключення до Instagram");
-    } finally {
       setConnecting(false);
     }
+  };
+
+  const handleSaveSelectedAccounts = async () => {
+    if (selectedAccountIds.size === 0) {
+      toast.error("Виберіть хоча б один акаунт");
+      return;
+    }
+
+    setSavingAccounts(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const selectedAccounts = fetchedAccounts
+        .filter(a => selectedAccountIds.has(a.instagramId))
+        .map(a => ({ pageId: a.pageId, instagramId: a.instagramId }));
+
+      const response = await fetch("/api/instagram/save-accounts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token || ""}`,
+        },
+        body: JSON.stringify({
+          accessToken: tempAccessToken,
+          selectedAccounts,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success(`Успішно підключено ${data.accounts.length} акаунт(ів)!`);
+        setShowSelectDialog(false);
+        setFetchedAccounts([]);
+        setSelectedAccountIds(new Set());
+        setTempAccessToken(null);
+        fetchAccounts();
+      } else {
+        toast.error(data.error || "Помилка збереження акаунтів");
+      }
+    } catch (error) {
+      console.error("Save error:", error);
+      toast.error("Помилка збереження акаунтів");
+    } finally {
+      setSavingAccounts(false);
+    }
+  };
+
+  const toggleAccountSelection = (instagramId: string) => {
+    setSelectedAccountIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(instagramId)) {
+        newSet.delete(instagramId);
+      } else {
+        newSet.add(instagramId);
+      }
+      return newSet;
+    });
+  };
+
+  const closeDialog = () => {
+    setShowSelectDialog(false);
+    setFetchedAccounts([]);
+    setSelectedAccountIds(new Set());
+    setTempAccessToken(null);
   };
 
   const handleDisconnect = async (accountId: string, username: string) => {
@@ -273,6 +389,125 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Account Selection Dialog */}
+      {showSelectDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={closeDialog}
+          />
+
+          {/* Dialog */}
+          <div className="relative bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg max-h-[80vh] overflow-hidden shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-700">
+              <h3 className="text-xl font-semibold text-white flex items-center gap-3">
+                <Instagram className="w-6 h-6 text-pink-500" />
+                Виберіть акаунти
+              </h3>
+              <button
+                onClick={closeDialog}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 max-h-[50vh] overflow-y-auto">
+              <p className="text-gray-400 text-sm mb-4">
+                Знайдено {fetchedAccounts.length} Instagram Business акаунт(ів).
+                Виберіть ті, які хочете підключити:
+              </p>
+
+              <div className="space-y-3">
+                {fetchedAccounts.map((account) => {
+                  const isSelected = selectedAccountIds.has(account.instagramId);
+                  return (
+                    <button
+                      key={account.instagramId}
+                      onClick={() => toggleAccountSelection(account.instagramId)}
+                      className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all ${
+                        isSelected
+                          ? "bg-purple-500/20 border-purple-500"
+                          : "bg-gray-800/50 border-gray-700 hover:border-gray-600"
+                      }`}
+                    >
+                      {/* Avatar */}
+                      {account.avatarUrl ? (
+                        <img
+                          src={account.avatarUrl}
+                          alt={account.username}
+                          className="w-12 h-12 rounded-full border-2 border-pink-500/50"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                          <Instagram className="w-6 h-6 text-white" />
+                        </div>
+                      )}
+
+                      {/* Info */}
+                      <div className="flex-1 text-left">
+                        <p className="text-white font-semibold">
+                          @{account.username}
+                        </p>
+                        <p className="text-gray-400 text-sm">
+                          {account.name} • {account.pageName}
+                        </p>
+                      </div>
+
+                      {/* Checkbox */}
+                      <div
+                        className={`w-6 h-6 rounded-md flex items-center justify-center transition-all ${
+                          isSelected
+                            ? "bg-purple-500"
+                            : "bg-gray-700 border border-gray-600"
+                        }`}
+                      >
+                        {isSelected && <Check className="w-4 h-4 text-white" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between gap-4 p-6 border-t border-gray-700 bg-gray-800/50">
+              <p className="text-sm text-gray-400">
+                Вибрано: {selectedAccountIds.size} з {fetchedAccounts.length}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={closeDialog}
+                  className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 border border-gray-700 rounded-xl transition-all"
+                >
+                  Скасувати
+                </button>
+                <button
+                  onClick={handleSaveSelectedAccounts}
+                  disabled={selectedAccountIds.size === 0 || savingAccounts}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold rounded-xl transition-all disabled:cursor-not-allowed"
+                >
+                  {savingAccounts ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Зберігаємо...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Підключити вибрані
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
