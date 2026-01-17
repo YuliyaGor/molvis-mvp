@@ -57,7 +57,7 @@ export default function SettingsPage() {
   const fetchAccounts = async () => {
     try {
       const { data, error } = await supabase
-        .from("instagram_accounts")
+        .from("instagram_accounts" as any)
         .select("*")
         .order("created_at", { ascending: false });
 
@@ -65,7 +65,7 @@ export default function SettingsPage() {
         console.error("Error fetching accounts:", error);
         toast.error("Помилка завантаження акаунтів");
       } else {
-        setAccounts(data || []);
+        setAccounts((data || []) as InstagramAccount[]);
       }
     } catch (error) {
       console.error("Error:", error);
@@ -231,7 +231,7 @@ export default function SettingsPage() {
 
     try {
       const { error } = await supabase
-        .from("instagram_accounts")
+        .from("instagram_accounts" as any)
         .delete()
         .eq("id", accountId);
 

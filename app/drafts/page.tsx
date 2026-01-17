@@ -55,17 +55,18 @@ export default function DraftsPage() {
   const fetchInstagramAccounts = async () => {
     try {
       const { data, error } = await supabase
-        .from('instagram_accounts')
+        .from('instagram_accounts' as any)
         .select('*')
         .order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching Instagram accounts:', error);
       } else {
-        setInstagramAccounts(data || []);
+        const accounts = (data || []) as InstagramAccount[];
+        setInstagramAccounts(accounts);
         // Якщо є тільки один акаунт, вибираємо його автоматично
-        if (data && data.length === 1) {
-          setSelectedAccount(data[0].id);
+        if (accounts.length === 1) {
+          setSelectedAccount(accounts[0].id);
         }
       }
     } catch (error) {
