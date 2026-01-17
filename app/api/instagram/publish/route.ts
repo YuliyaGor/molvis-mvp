@@ -5,6 +5,10 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
+// Константи для polling
+const MAX_POLLING_ATTEMPTS = 10;
+const POLLING_INTERVAL_MS = 2500; // 2.5 секунди
+
 export async function POST(request: NextRequest) {
   try {
     const { imageUrl, caption, accountId } = await request.json();
@@ -67,6 +71,7 @@ export async function POST(request: NextRequest) {
 
     // Якщо це base64, завантажуємо в Supabase Storage
     if (imageUrl.startsWith("data:image")) {
+      console.log("📤 Uploading image to Supabase Storage...");
       const uploadResult = await uploadBase64ToStorage(imageUrl, user.id);
       if (!uploadResult.success) {
         return NextResponse.json(
@@ -75,9 +80,11 @@ export async function POST(request: NextRequest) {
         );
       }
       finalImageUrl = uploadResult.url;
+      console.log("✅ Image uploaded:", finalImageUrl);
     }
 
     // Крок 1: Створюємо медіа-контейнер
+    console.log("📦 Creating media container...");
     const createMediaResponse = await fetch(
       `https://graph.facebook.com/v18.0/${account.instagram_business_id}/media`,
       {
@@ -96,7 +103,7 @@ export async function POST(request: NextRequest) {
     const createMediaData = await createMediaResponse.json();
 
     if (createMediaData.error) {
-      console.error("Create media error:", createMediaData.error);
+      console.error("❌ Create media error:", createMediaData.error);
       return NextResponse.json(
         { error: "Failed to create media: " + createMediaData.error.message },
         { status: 400 }
@@ -104,8 +111,26 @@ export async function POST(request: NextRequest) {
     }
 
     const creationId = createMediaData.id;
+    console.log("✅ Container created with ID:", creationId);
 
-    // Крок 2: Публікуємо медіа
+    // Крок 2: Polling - чекаємо поки контейнер буде готовий
+    console.log("⏳ Waiting for container to be ready...");
+    const statusResult = await waitForContainerReady(
+      creationId,
+      account.access_token
+    );
+
+    if (!statusResult.success) {
+      console.error("❌ Container status error:", statusResult.error);
+      return NextResponse.json(
+        { error: statusResult.error },
+        { status: 400 }
+      );
+    }
+
+    console.log("✅ Container is ready! Publishing...");
+
+    // Крок 3: Публікуємо медіа
     const publishResponse = await fetch(
       `https://graph.facebook.com/v18.0/${account.instagram_business_id}/media_publish`,
       {
@@ -123,12 +148,14 @@ export async function POST(request: NextRequest) {
     const publishData = await publishResponse.json();
 
     if (publishData.error) {
-      console.error("Publish error:", publishData.error);
+      console.error("❌ Publish error:", publishData.error);
       return NextResponse.json(
         { error: "Failed to publish: " + publishData.error.message },
         { status: 400 }
       );
     }
+
+    console.log("🎉 Post published successfully! Media ID:", publishData.id);
 
     return NextResponse.json({
       success: true,
@@ -136,12 +163,67 @@ export async function POST(request: NextRequest) {
       mediaId: publishData.id,
     });
   } catch (error: any) {
-    console.error("Instagram publish error:", error);
+    console.error("❌ Instagram publish error:", error);
     return NextResponse.json(
       { error: "Internal server error: " + error.message },
       { status: 500 }
     );
   }
+}
+
+// Функція для очікування готовності контейнера
+async function waitForContainerReady(
+  containerId: string,
+  accessToken: string
+): Promise<{ success: boolean; error?: string }> {
+  for (let attempt = 1; attempt <= MAX_POLLING_ATTEMPTS; attempt++) {
+    try {
+      const statusResponse = await fetch(
+        `https://graph.facebook.com/v18.0/${containerId}?fields=status_code&access_token=${accessToken}`
+      );
+
+      const statusData = await statusResponse.json();
+
+      if (statusData.error) {
+        return { success: false, error: statusData.error.message };
+      }
+
+      const status = statusData.status_code;
+      console.log(`🔄 Status check ${attempt}/${MAX_POLLING_ATTEMPTS}: ${status}`);
+
+      if (status === "FINISHED") {
+        return { success: true };
+      }
+
+      if (status === "ERROR") {
+        return { success: false, error: "Container processing failed with ERROR status" };
+      }
+
+      if (status === "IN_PROGRESS") {
+        console.log(`⏳ Status: IN_PROGRESS... waiting ${POLLING_INTERVAL_MS / 1000}s`);
+        await sleep(POLLING_INTERVAL_MS);
+        continue;
+      }
+
+      // Невідомий статус - продовжуємо чекати
+      console.log(`⏳ Status: ${status}... waiting ${POLLING_INTERVAL_MS / 1000}s`);
+      await sleep(POLLING_INTERVAL_MS);
+    } catch (error: any) {
+      console.error(`❌ Status check error (attempt ${attempt}):`, error.message);
+      // Продовжуємо спроби навіть при помилці
+      await sleep(POLLING_INTERVAL_MS);
+    }
+  }
+
+  return {
+    success: false,
+    error: `Container not ready after ${MAX_POLLING_ATTEMPTS} attempts (${MAX_POLLING_ATTEMPTS * POLLING_INTERVAL_MS / 1000}s)`
+  };
+}
+
+// Функція для затримки
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Функція для завантаження base64 в Supabase Storage

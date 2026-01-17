@@ -74,13 +74,13 @@ export async function POST(req: Request) {
       .getPublicUrl(filePath);
 
     // Зберігаємо метадані в базі
+    // @ts-ignore
     const { data: frameData, error: dbError } = await supabase
       .from('frames')
       .insert([
         {
           name: name,
-          storage_path: filePath,
-          thumbnail_path: urlData.publicUrl
+          url: urlData.publicUrl
         }
       ])
       .select()
@@ -120,9 +120,10 @@ export async function DELETE(req: Request) {
     }
 
     // Отримуємо інформацію про рамку
+    // @ts-ignore
     const { data: frame, error: fetchError } = await supabase
       .from('frames')
-      .select('storage_path')
+      .select('url')
       .eq('id', id)
       .single();
 
@@ -133,13 +134,20 @@ export async function DELETE(req: Request) {
       );
     }
 
-    // Видаляємо файл з Storage
-    const { error: storageError } = await supabase.storage
-      .from('frames')
-      .remove([frame.storage_path]);
+    // Витягуємо шлях з URL для видалення з Storage
+    const url = (frame as any).url as string;
+    if (url) {
+      const pathMatch = url.match(/frames\/(.+)$/);
+      if (pathMatch) {
+        const storagePath = `frames/${pathMatch[1]}`;
+        const { error: storageError } = await supabase.storage
+          .from('frames')
+          .remove([storagePath]);
 
-    if (storageError) {
-      console.error('Storage deletion error:', storageError);
+        if (storageError) {
+          console.error('Storage deletion error:', storageError);
+        }
+      }
     }
 
     // Видаляємо запис з БД
