@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+// Ліниве створення клієнтів щоб уникнути помилки під час білду
+const getSupabaseAdmin = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  return createClient(supabaseUrl, supabaseServiceKey);
+};
 
-const FACEBOOK_APP_ID = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID!;
-const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET!;
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  return createClient(supabaseUrl, supabaseAnonKey);
+};
+
+const getFacebookConfig = () => ({
+  appId: process.env.NEXT_PUBLIC_FACEBOOK_APP_ID!,
+  appSecret: process.env.FACEBOOK_APP_SECRET!,
+});
 
 interface SelectedAccount {
   pageId: string;
@@ -53,10 +64,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabaseClient = createClient(
-      supabaseUrl,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const supabaseClient = getSupabaseClient();
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
 
@@ -70,11 +78,12 @@ export async function POST(request: NextRequest) {
     const userId = user.id;
 
     // 1. Обмін short-lived token на long-lived token
+    const fbConfig = getFacebookConfig();
     const longLivedTokenResponse = await fetch(
       `https://graph.facebook.com/v18.0/oauth/access_token?` +
         `grant_type=fb_exchange_token&` +
-        `client_id=${FACEBOOK_APP_ID}&` +
-        `client_secret=${FACEBOOK_APP_SECRET}&` +
+        `client_id=${fbConfig.appId}&` +
+        `client_secret=${fbConfig.appSecret}&` +
         `fb_exchange_token=${accessToken}`
     );
 
@@ -146,7 +155,7 @@ export async function POST(request: NextRequest) {
       const pageAccessToken = pageTokenData.access_token || page.access_token;
 
       // Upsert - оновлюємо якщо існує, створюємо якщо ні
-      const { data: savedAccount, error: upsertError } = await supabaseAdmin
+      const { data: savedAccount, error: upsertError } = await getSupabaseAdmin()
         .from("instagram_accounts")
         .upsert(
           {

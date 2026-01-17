@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+// Ліниве створення клієнтів щоб уникнути помилки під час білду
+const getSupabaseAdmin = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  return createClient(supabaseUrl, supabaseServiceKey);
+};
+
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  return createClient(supabaseUrl, supabaseAnonKey);
+};
 
 // Константи для polling
 const MAX_POLLING_ATTEMPTS = 10;
@@ -38,10 +47,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabaseClient = createClient(
-      supabaseUrl,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const supabaseClient = getSupabaseClient();
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
 
@@ -53,7 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Отримуємо Instagram акаунт
-    const { data: account, error: accountError } = await supabaseAdmin
+    const { data: account, error: accountError } = await getSupabaseAdmin()
       .from("instagram_accounts")
       .select("*")
       .eq("id", accountId)
@@ -246,7 +252,7 @@ async function uploadBase64ToStorage(
     const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${imageType}`;
 
     // Завантажуємо в Storage
-    const { data, error } = await supabaseAdmin.storage
+    const { data, error } = await getSupabaseAdmin().storage
       .from("posts")
       .upload(fileName, buffer, {
         contentType: `image/${imageType}`,
@@ -259,7 +265,7 @@ async function uploadBase64ToStorage(
     }
 
     // Отримуємо публічний URL
-    const { data: urlData } = supabaseAdmin.storage
+    const { data: urlData } = getSupabaseAdmin().storage
       .from("posts")
       .getPublicUrl(fileName);
 

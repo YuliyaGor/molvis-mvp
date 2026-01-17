@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+// Ліниве отримання конфігурації щоб уникнути помилки під час білду
+const getConfig = () => ({
+  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+});
 
 interface InstagramBusinessAccount {
   id: string;
@@ -39,9 +43,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const config = getConfig();
     const supabaseClient = createClient(
-      supabaseUrl,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      config.supabaseUrl,
+      config.supabaseAnonKey
     );
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);

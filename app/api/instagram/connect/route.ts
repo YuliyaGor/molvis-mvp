@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-
-const FACEBOOK_APP_ID = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID!;
-const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET!;
+// Ліниве отримання конфігурації щоб уникнути помилки під час білду
+const getConfig = () => ({
+  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  facebookAppId: process.env.NEXT_PUBLIC_FACEBOOK_APP_ID!,
+  facebookAppSecret: process.env.FACEBOOK_APP_SECRET!,
+});
 
 // Цей endpoint тепер лише обмінює код на long-lived token
 // Збереження акаунтів виконується через /api/instagram/save-accounts
@@ -31,9 +34,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const config = getConfig();
     const supabaseClient = createClient(
-      supabaseUrl,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      config.supabaseUrl,
+      config.supabaseAnonKey
     );
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
@@ -53,8 +57,8 @@ export async function POST(request: NextRequest) {
     // 1. Обмін authorization code на access token
     const tokenResponse = await fetch(
       `https://graph.facebook.com/v18.0/oauth/access_token?` +
-        `client_id=${FACEBOOK_APP_ID}&` +
-        `client_secret=${FACEBOOK_APP_SECRET}&` +
+        `client_id=${config.facebookAppId}&` +
+        `client_secret=${config.facebookAppSecret}&` +
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `code=${code}`
     );
@@ -75,8 +79,8 @@ export async function POST(request: NextRequest) {
     const longLivedTokenResponse = await fetch(
       `https://graph.facebook.com/v18.0/oauth/access_token?` +
         `grant_type=fb_exchange_token&` +
-        `client_id=${FACEBOOK_APP_ID}&` +
-        `client_secret=${FACEBOOK_APP_SECRET}&` +
+        `client_id=${config.facebookAppId}&` +
+        `client_secret=${config.facebookAppSecret}&` +
         `fb_exchange_token=${shortLivedToken}`
     );
 
