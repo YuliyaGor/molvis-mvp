@@ -1,7 +1,7 @@
 "use client";
 
 import { Upload, Loader2, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, LogOut, Instagram, ChevronDown } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
 import { toast } from "sonner";
@@ -9,7 +9,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { InstagramAccount } from "@/lib/types";
 
-export default function Home() {
+// Компонент з useSearchParams потрібно обгорнути в Suspense
+function HomeContent() {
   const { user, loading: authLoading, signOut } = useAuth();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -1603,5 +1604,18 @@ export default function Home() {
         </div>
       </main>
     </div>
+  );
+}
+
+// Експорт з Suspense для useSearchParams
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-900 via-black to-gray-900">
+        <Loader2 className="h-12 w-12 animate-spin text-purple-500" />
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }

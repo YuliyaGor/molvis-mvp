@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useAuth } from "@/lib/useAuth";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -18,7 +18,7 @@ interface FetchedAccount {
   name: string;
 }
 
-export default function SettingsPage() {
+function SettingsContent() {
   const { user, loading: authLoading, signOut } = useAuth();
   const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
   const [loading, setLoading] = useState(true);
@@ -509,5 +509,18 @@ export default function SettingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Експорт з Suspense для useSearchParams
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-purple-500" />
+      </div>
+    }>
+      <SettingsContent />
+    </Suspense>
   );
 }
